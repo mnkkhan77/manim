@@ -1,0 +1,8 @@
+Q: Tell me about yourself.
+A: I'm a backend engineer with about five years of experience, mostly working with Python and distributed systems. In my current role I lead a small team that owns our payments infrastructure, and before that I worked at a startup where I built most of our data pipeline from scratch.
+
+Q: What's your biggest strength?
+A: I'm good at breaking down ambiguous problems into smaller, testable pieces. When a project has unclear requirements, I usually start by writing down the assumptions I'm making and confirming them early, which saves a lot of rework later.
+
+Q: Why do you want to work here?
+A: I've been following your engineering blog for a while and I really like how much ownership individual engineers have over their systems. I also think the problems you're solving around real-time data at scale line up really well with what I want to keep growing in.

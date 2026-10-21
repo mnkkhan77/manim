@@ -1,0 +1,13 @@
+venv/
+__pycache__/
+*.pyc
+media/
+.DS_Store
+batch_output/
+uploaded_backgrounds/
+uploaded_music/
+gui_config.json
+metadata.txt
+*_captioned.mp4
+*_bold.mp4
+*_with_music.*
