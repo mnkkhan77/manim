@@ -1,6 +1,6 @@
 from manim import *
 
-from reveal_common import THINKING_PAUSE, build_paragraph, speak_and_reveal
+from reveal_common import THINKING_PAUSE, build_paragraph, font_size_for, speak_and_reveal
 
 # Fixed corkboard palette -- intentionally ignores the passed-in theme colors,
 # same pattern as style_terminal.py's fixed green-on-black look.
@@ -55,10 +55,10 @@ def build_corkboard_background():
     return VGroup(base, dots)
 
 
-def build_note(text, font_size, note_color, text_color, position, rotation):
+def build_note(text, font_size, note_color, text_color, position, rotation, note_max_width=NOTE_MAX_WIDTH):
     """Build word mobjects first, size a card to fit them, then group+rotate as one unit."""
     paragraph, words = build_paragraph(
-        text, font_size, NOTE_MAX_WIDTH, color=text_color
+        text, font_size, note_max_width, color=text_color
     )
 
     if paragraph.height > NOTE_MAX_HEIGHT:
@@ -93,6 +93,10 @@ def render(scene, pairs, theme):
     board = build_corkboard_background()
     scene.add(board)
 
+    note_max_width = min(NOTE_MAX_WIDTH, 0.8 * config.frame_width - NOTE_PAD_X)
+    font_size_q = font_size_for(FONT_SIZE_Q)
+    font_size_a = font_size_for(FONT_SIZE_A)
+
     for i, (question, answer) in enumerate(pairs, start=1):
         counter = Text(
             f"Question {i} / {len(pairs)}", font_size=24, color=COUNTER_COLOR
@@ -101,19 +105,21 @@ def render(scene, pairs, theme):
         scene.add(counter)
 
         q_note, q_card, q_pin, q_paragraph, q_words = build_note(
-            question, FONT_SIZE_Q, Q_NOTE_COLOR, Q_TEXT_COLOR, Q_POSITION, Q_ROTATION
+            question, font_size_q, Q_NOTE_COLOR, Q_TEXT_COLOR, Q_POSITION, Q_ROTATION,
+            note_max_width=note_max_width,
         )
 
         scene.play(FadeIn(VGroup(q_card, q_pin), scale=0.85), run_time=0.4)
-        speak_and_reveal(scene, question, q_words)
+        speak_and_reveal(scene, question, q_words, voice=scene.question_voice)
         scene.wait(THINKING_PAUSE)
 
         a_note, a_card, a_pin, a_paragraph, a_words = build_note(
-            answer, FONT_SIZE_A, A_NOTE_COLOR, A_TEXT_COLOR, A_POSITION, A_ROTATION
+            answer, font_size_a, A_NOTE_COLOR, A_TEXT_COLOR, A_POSITION, A_ROTATION,
+            note_max_width=note_max_width,
         )
 
         scene.play(FadeIn(VGroup(a_card, a_pin), scale=0.85), run_time=0.4)
-        speak_and_reveal(scene, answer, a_words)
+        speak_and_reveal(scene, answer, a_words, voice=scene.answer_voice)
         scene.wait(1.0)
 
         scene.play(

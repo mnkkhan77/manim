@@ -6,9 +6,9 @@ from manim import *
 from reveal_common import (
     FONT_SIZE_A,
     FONT_SIZE_Q,
-    MAX_TEXT_WIDTH,
     THINKING_PAUSE,
     build_paragraph,
+    font_size_for,
     speak_and_reveal,
 )
 
@@ -94,8 +94,14 @@ def fit_caption(paragraph):
 
 
 def render(scene, pairs, theme):
-    q_center = LEFT * AVATAR_X + UP * AVATAR_Y
-    a_center = RIGHT * AVATAR_X + UP * AVATAR_Y
+    frame_w = config.frame_width
+    portrait = frame_w < config.frame_height
+    avatar_x = min(AVATAR_X, 0.35 * frame_w) if portrait else AVATAR_X
+    font_size_q = font_size_for(FONT_SIZE_Q)
+    font_size_a = font_size_for(FONT_SIZE_A)
+
+    q_center = LEFT * avatar_x + UP * AVATAR_Y
+    a_center = RIGHT * avatar_x + UP * AVATAR_Y
 
     q_circle, q_glyph, q_ring = build_avatar(q_center, theme["question_color"], "Q")
     a_circle, a_glyph, a_ring = build_avatar(a_center, theme["answer_color"], "A")
@@ -133,11 +139,11 @@ def render(scene, pairs, theme):
             set_active(a_circle, a_flag, False)
 
             q_paragraph, q_words = build_paragraph(
-                question, FONT_SIZE_Q, MAX_TEXT_WIDTH, color=theme["question_color"]
+                question, font_size_q, color=theme["question_color"]
             )
             fit_caption(q_paragraph)
 
-            speak_and_reveal(scene, question, q_words)
+            speak_and_reveal(scene, question, q_words, voice=scene.question_voice)
             set_active(q_circle, q_flag, False)
             scene.wait(THINKING_PAUSE)
             scene.play(FadeOut(q_paragraph))
@@ -145,11 +151,11 @@ def render(scene, pairs, theme):
             set_active(a_circle, a_flag, True)
 
             a_paragraph, a_words = build_paragraph(
-                answer, FONT_SIZE_A, MAX_TEXT_WIDTH, color=theme["answer_color"]
+                answer, font_size_a, color=theme["answer_color"]
             )
             fit_caption(a_paragraph)
 
-            speak_and_reveal(scene, answer, a_words)
+            speak_and_reveal(scene, answer, a_words, voice=scene.answer_voice)
             set_active(a_circle, a_flag, False)
             scene.wait(1.0)
 

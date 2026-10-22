@@ -9,7 +9,7 @@ caption tracks, or for quickly previewing how captions would look.
 
 Usage:
     venv/Scripts/python.exe burn_subtitles.py <path_to_video.mp4> [path_to_subtitles.srt] \
-        [--output path_to_output.mp4] [--style default|bold]
+        [--output path_to_output.mp4] [--style default|bold|theme:<theme_name>]
 
 If the .srt path is omitted, it is auto-derived by swapping the video's
 extension for .srt in the same directory (the convention manim-voiceover
@@ -18,10 +18,16 @@ already uses).
 If --output is omitted, it defaults to "<original_name>_captioned.mp4" in the
 same directory as the input video.
 
+`--style` accepts either one of the fixed presets ("default", "bold"), or
+`theme:<theme_name>` (e.g. "theme:midnight", "theme:neon") to color the
+captions using that theme's `accent_color` from themes.py, with a dark
+outline for contrast, so burned-in captions can match the video's theme.
+
 Examples:
     venv/Scripts/python.exe burn_subtitles.py media/videos/interview_simulation/480p15/InterviewSimulation.mp4
     venv/Scripts/python.exe burn_subtitles.py input.mp4 captions.srt --style bold
     venv/Scripts/python.exe burn_subtitles.py input.mp4 --output out.mp4 --style bold
+    venv/Scripts/python.exe burn_subtitles.py input.mp4 --style theme:neon
 """
 
 import argparse
@@ -29,6 +35,8 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+from themes import THEMES, get_theme
 
 # ASS/libass force_style presets for the ffmpeg `subtitles` filter.
 #
@@ -47,6 +55,58 @@ STYLE_PRESETS = {
         "Alignment=2,MarginV=35"
     ),
 }
+
+THEME_STYLE_PREFIX = "theme:"
+
+
+def hex_to_ass_color(hex_color: str) -> str:
+    """Convert a "#RRGGBB" hex string into an ASS/libass "&HAABBGGRR&" color.
+
+    ASS colors are alpha-blue-green-red, each a 2-digit hex byte, with alpha
+    00 meaning fully opaque (see STYLE_PRESETS above for the convention this
+    matches, e.g. white "#FFFFFF" -> "&H00FFFFFF&").
+    """
+    hex_color = hex_color.lstrip("#")
+    if len(hex_color) != 6:
+        raise ValueError(f"Expected a 6-digit hex color, got: {hex_color!r}")
+    red = hex_color[0:2]
+    green = hex_color[2:4]
+    blue = hex_color[4:6]
+    return f"&H00{blue}{green}{red}&".upper()
+
+
+def build_force_style_for_theme(theme_name: str) -> str:
+    """Build a force_style string using a theme's accent_color for the text,
+    reusing the "default" preset's font/outline/layout settings."""
+    theme = get_theme(theme_name)
+    primary_colour = hex_to_ass_color(theme["accent_color"])
+    return (
+        f"FontName=Arial,FontSize=14,PrimaryColour={primary_colour},"
+        "OutlineColour=&H00000000&,BorderStyle=1,Outline=1.5,Shadow=0,"
+        "Alignment=2,MarginV=25"
+    )
+
+
+def resolve_force_style(style: str) -> str:
+    """Resolve a --style value (a fixed preset name, or "theme:<name>") into
+    a force_style string, exiting with a clear error if it's invalid."""
+    if style in STYLE_PRESETS:
+        return STYLE_PRESETS[style]
+    if style.startswith(THEME_STYLE_PREFIX):
+        theme_name = style[len(THEME_STYLE_PREFIX):]
+        try:
+            return build_force_style_for_theme(theme_name)
+        except ValueError as e:
+            print(f"ERROR: {e}", file=sys.stderr)
+            sys.exit(1)
+    available = ", ".join(sorted(STYLE_PRESETS.keys()))
+    print(
+        f"ERROR: invalid --style value: {style!r}\n"
+        f"Expected one of: {available}, or 'theme:<name>' where <name> is "
+        f"one of: {', '.join(sorted(THEMES.keys()))}",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 
 def find_ffmpeg() -> str:
@@ -85,7 +145,7 @@ def escape_path_for_filter(path: Path) -> str:
 
 def build_filter(srt_path: Path, style: str) -> str:
     escaped_srt = escape_path_for_filter(srt_path)
-    force_style = STYLE_PRESETS[style]
+    force_style = resolve_force_style(style)
     # force_style value is wrapped in single quotes per libass filter syntax.
     return f"subtitles='{escaped_srt}':force_style='{force_style}'"
 
@@ -110,9 +170,19 @@ def main() -> None:
     )
     parser.add_argument(
         "--style",
-        choices=sorted(STYLE_PRESETS.keys()),
         default="default",
-        help="Caption style preset to use (default: 'default').",
+        help="Caption style to use: a fixed preset ('default', 'bold'), or "
+        "'theme:<name>' to color captions using a themes.py theme's "
+        "accent_color (e.g. 'theme:midnight', 'theme:neon'). "
+        "(default: 'default').",
+    )
+    parser.add_argument(
+        "--gpu",
+        action="store_true",
+        help="Re-encode with Intel Quick Sync (h264_qsv) instead of the "
+        "default CPU encoder (libx264). Faster on machines with Quick Sync "
+        "support; silently unavailable otherwise, so only pass this if "
+        "you've confirmed it works on this machine.",
     )
     args = parser.parse_args()
 
@@ -155,10 +225,10 @@ def main() -> None:
         str(video_path),
         "-vf",
         vf,
-        "-c:a",
-        "copy",
-        str(output_path),
     ]
+    if args.gpu:
+        cmd += ["-c:v", "h264_qsv", "-pix_fmt", "nv12"]
+    cmd += ["-c:a", "copy", str(output_path)]
 
     print(f"Input video:    {video_path}")
     print(f"Subtitle file:  {srt_path}")

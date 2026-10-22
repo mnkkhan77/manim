@@ -1,6 +1,13 @@
 from manim import *
 
-from reveal_common import THINKING_PAUSE, speak_and_reveal
+from reveal_common import (
+    DEFAULT_HIGHLIGHT_COLOR,
+    THINKING_PAUSE,
+    _parse_markdown_words,
+    build_styled_paragraph,
+    font_size_for,
+    speak_and_reveal,
+)
 
 TERM_BG = "#0c0f0a"
 BAR_BG = "#1a1f16"
@@ -15,8 +22,8 @@ LOG_TOP = 2.6
 LOG_LEFT = -5.6
 
 
-def build_terminal_chrome():
-    bar = Rectangle(width=12, height=0.45, color=BAR_BG, fill_opacity=1, stroke_width=0)
+def build_terminal_chrome(bar_width=12):
+    bar = Rectangle(width=bar_width, height=0.45, color=BAR_BG, fill_opacity=1, stroke_width=0)
     bar.to_edge(UP, buff=0)
     dots = VGroup(*[
         Dot(radius=0.07, color=c) for c in DOT_COLORS
@@ -26,51 +33,50 @@ def build_terminal_chrome():
 
 
 def make_line_words(text, color, font_size=FONT_SIZE, max_width=MAX_WIDTH):
-    words = text.split()
-    mobs = [Text(w, font_size=font_size, color=color, font="Consolas") for w in words]
-    lines, current, width = [], [], 0
-    buff = 0.12
-    for m in mobs:
-        projected = width + m.width + (buff if current else 0)
-        if current and projected > max_width:
-            lines.append(current)
-            current, width = [m], m.width
-        else:
-            current.append(m)
-            width = projected
-    if current:
-        lines.append(current)
-    line_groups = [VGroup(*ln).arrange(RIGHT, buff=buff) for ln in lines]
-    block = VGroup(*line_groups).arrange(DOWN, aligned_edge=LEFT, buff=0.18)
-    ordered = [m for ln in lines for m in ln]
-    return block, ordered
+    parsed = _parse_markdown_words(text)
+    return build_styled_paragraph(
+        parsed, font_size, color, DEFAULT_HIGHLIGHT_COLOR, word_buff=0.12, line_buff=0.18,
+        max_width=max_width, font="Consolas",
+    )
 
 
 def render(scene, pairs, theme):
+    frame_w = config.frame_width
+    portrait = frame_w < config.frame_height
+    font_size = font_size_for(FONT_SIZE)
+    if portrait:
+        log_left = -frame_w / 2 + 0.3
+        max_width = frame_w - 0.9
+        bar_width = frame_w
+    else:
+        log_left = LOG_LEFT
+        max_width = MAX_WIDTH
+        bar_width = 12
+
     background = Rectangle(
         width=config.frame_width, height=config.frame_height, stroke_width=0
     ).set_fill(color=TERM_BG, opacity=1)
     background.set_z_index(-10)
     scene.add(background)
 
-    chrome = build_terminal_chrome()
+    chrome = build_terminal_chrome(bar_width=bar_width)
     scene.add(chrome)
 
-    cursor_template = Rectangle(width=0.14, height=FONT_SIZE / 420, fill_opacity=1, stroke_width=0, color=Q_COLOR)
+    cursor_template = Rectangle(width=0.14, height=font_size / 420, fill_opacity=1, stroke_width=0, color=Q_COLOR)
 
     log = VGroup()
 
     for i, (question, answer) in enumerate(pairs, start=1):
-        prompt = Text(f"Q{i}>", font_size=FONT_SIZE, color=PROMPT_COLOR, font="Consolas")
-        q_block, q_words = make_line_words(question, Q_COLOR)
+        prompt = Text(f"Q{i}>", font_size=font_size, color=PROMPT_COLOR, font="Consolas")
+        q_block, q_words = make_line_words(question, Q_COLOR, font_size=font_size, max_width=max_width)
         q_line = VGroup(prompt, q_block).arrange(RIGHT, buff=0.18, aligned_edge=UP)
 
-        a_block, a_words = make_line_words(answer, A_COLOR)
+        a_block, a_words = make_line_words(answer, A_COLOR, font_size=font_size, max_width=max_width)
 
         entry = VGroup(q_line, a_block).arrange(DOWN, aligned_edge=LEFT, buff=0.22)
         log.add(entry)
         log.arrange(DOWN, aligned_edge=LEFT, buff=0.45)
-        log.move_to(np.array([LOG_LEFT, LOG_TOP, 0]), aligned_edge=UL)
+        log.move_to(np.array([log_left, LOG_TOP, 0]), aligned_edge=UL)
 
         if log.height > 6.3:
             shift_up = log.height - 6.3
@@ -81,10 +87,10 @@ def render(scene, pairs, theme):
         cursor.add_updater(lambda m, dt: m.set_opacity(1 if (scene.renderer.time % 1.0) < 0.5 else 0))
         scene.add(cursor)
 
-        speak_and_reveal(scene, question, q_words)
+        speak_and_reveal(scene, question, q_words, voice=scene.question_voice)
         cursor.clear_updaters()
         scene.remove(cursor)
         scene.wait(THINKING_PAUSE)
 
-        speak_and_reveal(scene, answer, a_words)
+        speak_and_reveal(scene, answer, a_words, voice=scene.answer_voice)
         scene.wait(1.0)

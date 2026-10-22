@@ -1,6 +1,6 @@
 from manim import *
 
-from reveal_common import THINKING_PAUSE, build_paragraph, speak_and_reveal
+from reveal_common import THINKING_PAUSE, build_paragraph, font_size_for, speak_and_reveal
 
 FONT_SIZE_Q = 28
 FONT_SIZE_A = 28
@@ -21,6 +21,20 @@ BUBBLE_FILL_OPACITY = 0.85
 
 
 def render(scene, pairs, theme):
+    frame_w = config.frame_width
+    portrait = frame_w < config.frame_height
+    if portrait:
+        left_buff = 0.08 * frame_w
+        right_buff = 0.08 * frame_w
+        available_bubble_width = frame_w - left_buff - right_buff
+        bubble_max_width = available_bubble_width - 2 * PAD_X
+    else:
+        bubble_max_width = BUBBLE_MAX_WIDTH
+        left_buff = LEFT_BUFF
+        right_buff = RIGHT_BUFF
+    font_size_q = font_size_for(FONT_SIZE_Q)
+    font_size_a = font_size_for(FONT_SIZE_A)
+
     bg_color = ManimColor(theme["bg_colors"][0])
     question_bubble_color = interpolate_color(
         bg_color, ManimColor(theme["question_color"]), BUBBLE_BLEND_ALPHA
@@ -41,7 +55,7 @@ def render(scene, pairs, theme):
 
     def add_message(text, font_size, text_color, bubble_color, align_right):
         paragraph, words = build_paragraph(
-            text, font_size, BUBBLE_MAX_WIDTH, color=text_color
+            text, font_size, bubble_max_width, color=text_color
         )
 
         bubble_bg = RoundedRectangle(
@@ -56,9 +70,9 @@ def render(scene, pairs, theme):
         paragraph.move_to(bubble_bg.get_center())
 
         if align_right:
-            bubble_bg.to_edge(RIGHT, buff=RIGHT_BUFF)
+            bubble_bg.to_edge(RIGHT, buff=right_buff)
         else:
-            bubble_bg.to_edge(LEFT, buff=LEFT_BUFF)
+            bubble_bg.to_edge(LEFT, buff=left_buff)
         paragraph.move_to(bubble_bg.get_center())
 
         if len(thread) == 0:
@@ -90,7 +104,8 @@ def render(scene, pairs, theme):
             run_time=0.4,
         )
 
-        speak_and_reveal(scene, text, words)
+        voice = scene.answer_voice if align_right else scene.question_voice
+        speak_and_reveal(scene, text, words, voice=voice)
         # Now that every word is genuinely visible, it's safe to fold the
         # paragraph into `thread` so later scrolls carry it along too.
         thread.add(paragraph)
@@ -106,13 +121,13 @@ def render(scene, pairs, theme):
         scene.add(counter)
 
         add_message(
-            question, FONT_SIZE_Q, theme["question_color"], question_bubble_color,
+            question, font_size_q, theme["question_color"], question_bubble_color,
             align_right=False,
         )
         scene.wait(THINKING_PAUSE)
 
         add_message(
-            answer, FONT_SIZE_A, theme["answer_color"], answer_bubble_color,
+            answer, font_size_a, theme["answer_color"], answer_bubble_color,
             align_right=True,
         )
         scene.wait(1.0)

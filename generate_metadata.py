@@ -27,6 +27,15 @@ from qa_format import parse_qa_file
 
 WORDS_PER_MINUTE = 140
 
+# Mirrors reveal_common.THINKING_PAUSE (the pause between a question finishing
+# and the answer starting). Duplicated as a plain constant rather than
+# imported -- reveal_common.py does `from manim import *`, and this module
+# deliberately avoids the manim/voiceover stack (see module docstring).
+THINKING_PAUSE = 1.2
+
+MIN_YOUTUBE_CHAPTERS = 3
+MAX_CHAPTER_LABEL_LEN = 50
+
 STOPWORDS = {
     "the", "a", "an", "and", "or", "but", "to", "of", "in", "on", "for",
     "with", "is", "are", "your", "you", "i", "me", "my", "what", "whats",
@@ -101,14 +110,64 @@ def estimate_duration(pairs):
     return f"~{minutes}m {seconds}s", total_words
 
 
+def _format_timestamp(total_seconds):
+    total_seconds = max(0, round(total_seconds))
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{seconds:02d}"
+    return f"{minutes}:{seconds:02d}"
+
+
+def _chapter_label(question, max_len=MAX_CHAPTER_LABEL_LEN):
+    label = " ".join(question.split())
+    if len(label) > max_len:
+        label = label[: max_len - 3].rstrip() + "..."
+    return label
+
+
+def build_chapters(pairs):
+    """Estimate a start time for each Q&A pair's chapter, reusing the same
+    words-per-minute heuristic as estimate_duration() plus THINKING_PAUSE
+    (the real Q->A gap every reveal style waits out), so chapters stay
+    consistent with the total duration estimate and roughly track real video
+    timing. The first chapter lands at 0:00, satisfying YouTube's requirement
+    that chapters start there."""
+    chapters = []
+    elapsed = 0.0
+    for i, (question, answer) in enumerate(pairs, start=1):
+        chapters.append((elapsed, f"Q{i}: {_chapter_label(question)}"))
+        q_seconds = (len(question.split()) / WORDS_PER_MINUTE) * 60
+        a_seconds = (len(answer.split()) / WORDS_PER_MINUTE) * 60
+        elapsed += q_seconds + THINKING_PAUSE + a_seconds
+    return chapters
+
+
+def build_chapters_text(pairs):
+    chapters = build_chapters(pairs)
+    lines = [f"{_format_timestamp(t)} {label}" for t, label in chapters]
+    if len(chapters) < MIN_YOUTUBE_CHAPTERS:
+        lines.append("")
+        lines.append(
+            f"Note: YouTube requires at least {MIN_YOUTUBE_CHAPTERS} chapters "
+            f"(first at 0:00) to display them as chapters. This script has "
+            f"only {len(chapters)} question{'s' if len(chapters) != 1 else ''}, "
+            "so the timestamps above won't be recognized as chapters by YouTube "
+            "-- add more Q&A pairs to reach the minimum."
+        )
+    return "\n".join(lines)
+
+
 def build_metadata_text(pairs):
     title = build_title(pairs)
     description = build_description(pairs)
     duration_str, total_words = estimate_duration(pairs)
+    chapters_text = build_chapters_text(pairs)
     content = (
         f"TITLE:\n{title}\n\n"
         f"DESCRIPTION:\n{description}\n\n"
-        f"ESTIMATED DURATION:\n{duration_str} (based on {total_words} words at ~{WORDS_PER_MINUTE} wpm)\n"
+        f"ESTIMATED DURATION:\n{duration_str} (based on {total_words} words at ~{WORDS_PER_MINUTE} wpm)\n\n"
+        f"CHAPTERS:\n{chapters_text}\n"
     )
     return content
 

@@ -1,0 +1,11 @@
+LABEL: 1947
+India had just emerged from two centuries of British rule. The streets of Delhi were filled with both celebration and uncertainty as the country stepped into independence for the very first time.
+
+LABEL: 1950
+On January 26th, the Constitution of India came into effect, making it the world's largest democracy and laying the legal foundation for everything that followed.
+
+LABEL: 1991
+Facing a severe balance-of-payments crisis, India opened its economy to the world. Liberalization reforms reshaped industries overnight and set the stage for decades of growth.
+
+LABEL: 2014
+India launched its Mars Orbiter Mission, becoming the first Asian nation to reach Mars orbit, and doing it on its very first attempt at a fraction of the cost of comparable missions.

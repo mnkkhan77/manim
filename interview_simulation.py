@@ -17,6 +17,7 @@ import style_terminal
 import style_whiteboard
 from branding import build_intro_card, build_outro_card
 from edge_tts_service import EdgeTTSService
+from filler_words import add_fillers
 from qa_format import parse_qa_file, parse_qa_text
 from themes import get_theme
 
@@ -36,9 +37,14 @@ STYLE_REGISTRY = {
 DEFAULT_CONFIG = {
     "script_text": None,
     "voice": "en-US-AndrewNeural",
+    "answer_voice": None,
     "theme": "midnight",
     "background_image": None,
+    "background_video": None,
     "reveal_style": "stacked",
+    "orientation": "landscape",
+    "add_fillers": False,
+    "filler_rate": 0.15,
     "show_intro": False,
     "channel_name": "",
     "episode_title": "",
@@ -58,14 +64,43 @@ def load_gui_config():
 
 
 class InterviewSimulation(VoiceoverScene):
+    def __init__(self, **kwargs):
+        # Scene.__init__ builds the camera (and its pixel buffer) from
+        # config.pixel_width/height — by the time construct() runs, that's
+        # already fixed. So the portrait resolution switch has to happen
+        # here, before super().__init__(), not in construct().
+        gui_config = load_gui_config()
+        if gui_config.get("orientation", "landscape") == "portrait":
+            # 9:16. Keep pixel_height/frame_height as set by the -ql/-qm/-qh/-qk
+            # quality flag and derive the narrower width from it, so the quality
+            # flag still controls output resolution.
+            config.pixel_width = round(config.pixel_height * 9 / 16)
+            config.frame_width = config.frame_height * 9 / 16
+        super().__init__(**kwargs)
+
     def construct(self):
         gui_config = load_gui_config()
         theme = get_theme(gui_config["theme"])
 
-        self.set_speech_service(EdgeTTSService(voice=gui_config["voice"]))
+        self.question_voice = EdgeTTSService(voice=gui_config["voice"])
+        answer_voice_name = gui_config.get("answer_voice") or gui_config["voice"]
+        self.answer_voice = (
+            self.question_voice
+            if answer_voice_name == gui_config["voice"]
+            else EdgeTTSService(voice=answer_voice_name)
+        )
+        self.set_speech_service(self.question_voice)
 
+        bg_video_path = gui_config.get("background_video")
         bg_image_path = gui_config.get("background_image")
-        if bg_image_path and Path(bg_image_path).exists():
+        if bg_video_path:
+            # A background video is composited in afterward (see
+            # add_background_video.py) over manim's own transparent output
+            # (requires rendering with -t/--transparent) - draw nothing
+            # opaque here so there's nothing to composite against but the
+            # Q&A content itself.
+            pass
+        elif bg_image_path and Path(bg_image_path).exists():
             background = ImageMobject(bg_image_path)
             background.stretch_to_fit_width(config.frame_width)
             background.stretch_to_fit_height(config.frame_height)
@@ -101,6 +136,10 @@ class InterviewSimulation(VoiceoverScene):
             pairs = parse_qa_text(gui_config["script_text"])
         else:
             pairs = parse_qa_file(SCRIPT_FILE)
+
+        if gui_config.get("add_fillers"):
+            rate = gui_config.get("filler_rate", 0.15)
+            pairs = [(q, add_fillers(a, rate=rate)) for q, a in pairs]
 
         style_name = gui_config.get("reveal_style", "stacked")
         render_style = STYLE_REGISTRY.get(style_name, style_stacked.render)

@@ -3,14 +3,17 @@ from manim import *
 from reveal_common import (
     FONT_SIZE_A,
     FONT_SIZE_Q,
-    MAX_TEXT_WIDTH,
     THINKING_PAUSE,
     build_paragraph,
+    font_size_for,
     speak_and_reveal,
 )
 
 
 def render(scene, pairs, theme):
+    font_size_q = font_size_for(FONT_SIZE_Q)
+    font_size_a = font_size_for(FONT_SIZE_A)
+
     for i, (question, answer) in enumerate(pairs, start=1):
         counter = Text(
             f"Question {i} / {len(pairs)}", font_size=24, color=theme["accent_color"]
@@ -19,17 +22,17 @@ def render(scene, pairs, theme):
         scene.add(counter)
 
         q_paragraph, q_words = build_paragraph(
-            question, FONT_SIZE_Q, MAX_TEXT_WIDTH, color=theme["question_color"]
+            question, font_size_q, color=theme["question_color"]
         )
         q_paragraph.move_to(UP * 1.5)
 
-        speak_and_reveal(scene, question, q_words)
+        speak_and_reveal(scene, question, q_words, voice=scene.question_voice)
         scene.wait(THINKING_PAUSE)
 
         scene.play(q_paragraph.animate.to_edge(UP).scale(0.7))
 
         a_paragraph, a_words = build_paragraph(
-            answer, FONT_SIZE_A, MAX_TEXT_WIDTH, color=theme["answer_color"]
+            answer, font_size_a, color=theme["answer_color"]
         )
         a_paragraph.next_to(q_paragraph, DOWN, buff=0.8)
         if a_paragraph.height > 4.5:
@@ -37,7 +40,7 @@ def render(scene, pairs, theme):
             a_paragraph.scale(scale)
             a_paragraph.next_to(q_paragraph, DOWN, buff=0.8)
 
-        speak_and_reveal(scene, answer, a_words)
+        speak_and_reveal(scene, answer, a_words, voice=scene.answer_voice)
         scene.wait(1.0)
 
         scene.play(FadeOut(counter), FadeOut(q_paragraph), FadeOut(a_paragraph))
