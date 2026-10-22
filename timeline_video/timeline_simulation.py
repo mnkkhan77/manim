@@ -3,6 +3,7 @@
 # Swap -ql for -qm/-qh/-qk for higher quality. Reads timeline_config.json if
 # present (see DEFAULT_CONFIG below), otherwise falls back to timeline_script.txt.
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -14,8 +15,9 @@ from manim import *
 from manim_voiceover import VoiceoverScene
 
 from branding import build_intro_card, build_outro_card
-from edge_tts_service import EdgeTTSService
+from edge_tts_service import EdgeTTSService, resolve_narration_speed
 from reveal_common import build_paragraph, font_size_for, is_portrait, speak_and_reveal
+from stock_fetch import fetch_stock_image
 from themes import get_theme
 from timeline_format import parse_timeline_file, parse_timeline_text
 
@@ -26,6 +28,7 @@ CONFIG_FILE = HERE / "timeline_config.json"
 DEFAULT_CONFIG = {
     "script_text": None,
     "voice": "en-US-AndrewNeural",
+    "narration_speed": 1.0,
     "theme": "midnight",
     "orientation": "landscape",
     "show_intro": False,
@@ -34,6 +37,8 @@ DEFAULT_CONFIG = {
     "show_outro": False,
     "outro_message": "Thanks for watching! Like and subscribe.",
     "handle": "",
+    "pexels_api_key": None,
+    "pixabay_api_key": None,
 }
 
 CAPTION_FONT_SIZE = 30
@@ -193,7 +198,8 @@ class TimelineVideo(VoiceoverScene):
     def construct(self):
         gui_config = load_timeline_config()
         theme = get_theme(gui_config["theme"])
-        self.set_speech_service(EdgeTTSService(voice=gui_config["voice"]))
+        narration_speed = resolve_narration_speed(gui_config.get("narration_speed", 1.0))
+        self.set_speech_service(EdgeTTSService(voice=gui_config["voice"], global_speed=narration_speed))
 
         if gui_config["show_intro"]:
             intro = build_intro_card(
@@ -208,6 +214,17 @@ class TimelineVideo(VoiceoverScene):
             scenes = parse_timeline_text(gui_config["script_text"])
         else:
             scenes = parse_timeline_file(SCRIPT_FILE)
+
+        pexels_key = gui_config["pexels_api_key"] or os.environ.get("PEXELS_API_KEY")
+        pixabay_key = gui_config["pixabay_api_key"] or os.environ.get("PIXABAY_API_KEY")
+        for sc in scenes:
+            if not sc["image"] and sc["search"]:
+                sc["image"] = fetch_stock_image(
+                    sc["search"],
+                    orientation=gui_config["orientation"],
+                    pexels_api_key=pexels_key,
+                    pixabay_api_key=pixabay_key,
+                )
 
         render_timeline(self, scenes, theme)
 

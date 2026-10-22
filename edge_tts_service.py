@@ -1,4 +1,8 @@
 import asyncio
+import shutil
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 import edge_tts
@@ -7,6 +11,64 @@ from manim import logger
 from manim_voiceover._typing import VoiceoverData
 from manim_voiceover.helper import remove_bookmarks
 from manim_voiceover.services.base import PathLike, SpeechService, initialize_speech_service, path_to_string
+
+_sox_mp3_capable = None  # cached per process; see resolve_narration_speed
+
+
+def _sox_handles_mp3() -> bool:
+    """
+    Real functional probe, not just `shutil.which("sox")` -- a SoX binary can
+    be found on PATH and still fail to actually process mp3s (hit this with
+    the ChrisBagwell.SoX winget package's Windows build, which is missing
+    libmad; see AGENTS.md). manim_voiceover's global_speed feature needs SoX
+    to decode AND re-encode mp3 (edge-tts's output format), so the probe
+    round-trips a synthesized clip through both.
+    """
+    global _sox_mp3_capable
+    if _sox_mp3_capable is not None:
+        return _sox_mp3_capable
+
+    if shutil.which("sox") is None:
+        _sox_mp3_capable = False
+        return False
+
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            probe_in = str(Path(tmp) / "probe_in.mp3")
+            probe_out = str(Path(tmp) / "probe_out.mp3")
+            subprocess.run(
+                ["sox", "-n", "-r", "8000", "-c", "1", probe_in, "synth", "0.05", "sine", "440"],
+                check=True, capture_output=True,
+            )
+            subprocess.run(
+                ["sox", probe_in, probe_out, "tempo", "1.5"],
+                check=True, capture_output=True,
+            )
+        _sox_mp3_capable = True
+    except Exception:
+        _sox_mp3_capable = False
+
+    return _sox_mp3_capable
+
+
+def resolve_narration_speed(requested_speed: float) -> float:
+    """
+    Returns `requested_speed` as-is if SoX is actually usable, otherwise
+    warns and falls back to 1.0 (normal speed) instead of letting
+    manim_voiceover's global_speed crash the render with a bare
+    FileNotFoundError when SoX is missing or can't handle mp3.
+    """
+    if requested_speed == 1.0:
+        return 1.0
+    if _sox_handles_mp3():
+        return requested_speed
+    print(
+        f"narration_speed={requested_speed} requires a working SoX install on PATH "
+        "(with mp3 support) -- falling back to 1.0 (normal speed). "
+        "See AGENTS.md's Environment section.",
+        file=sys.stderr,
+    )
+    return 1.0
 
 
 class EdgeTTSService(SpeechService):

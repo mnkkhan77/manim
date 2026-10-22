@@ -18,6 +18,33 @@ pipeline sharing only the TTS/theme/branding code described here.
   ```
 - MiKTeX (LaTeX) is installed, so `MathTex`/`Tex` work.
 - `manim-voiceover`, `gtts`, and `edge-tts` are installed in the venv.
+- SoX is installed via winget (as `sox_ng`, a maintained fork — the original
+  `ChrisBagwell.SoX` winget package's Windows build lacks MP3 support, i.e.
+  `libmad`, and can't read the mp3s edge-tts produces) but is NOT on PATH in a
+  fresh shell, and manim-voiceover's `global_speed` narration-speed feature
+  (used by the `narration_speed` config key in both pipelines) hard-depends on
+  a binary literally named `sox`/`sox.exe` being found on PATH — the `sox`
+  Python package shells out to that exact name, not `sox_ng`. The winget
+  install only ships `sox_ng.exe`, so `sox.exe` here is a copy of it placed in
+  the same folder (argv0 dispatch makes it identify itself as `sox` either
+  way). Before any render that uses narration speed adjustment, prepend this
+  dir too:
+  ```
+  export PATH="/c/Users/NIS/AppData/Local/Microsoft/WinGet/Packages/sox_ng.sox_ng_Microsoft.Winget.Source_8wekyb3d8bbwe:$PATH"
+  ```
+  With `narration_speed` left at the default `1.0`, SoX is never invoked and
+  its absence is harmless — `manim_voiceover` just logs a "SoX could not be
+  found!" warning at import and the `global_speed != 1` check short-circuits.
+  Setting `narration_speed` to anything else without a working SoX used to
+  crash the render outright with a bare `FileNotFoundError: [WinError 2]`
+  (confirmed by testing) — `edge_tts_service.resolve_narration_speed()` now
+  guards this: it does a real functional probe (synthesizes a tiny mp3 and
+  round-trips it through SoX's `tempo` effect, not just `shutil.which("sox")`
+  — the ChrisBagwell.SoX build above passed a plain existence check and still
+  couldn't decode mp3) and falls back to `1.0` with a stderr warning instead
+  of letting the crash happen. Both `interview_simulation.py` and
+  `timeline_video/timeline_simulation.py` route `narration_speed` through it
+  before constructing `EdgeTTSService`.
 
 ## Rendering
 
@@ -249,6 +276,7 @@ Written by `app.py` (or by hand for testing); read fresh on every render.
   "script_text": null,            // string in "Q: ...\nA: ...\n\n" format; null = read interview_script.txt
   "voice": "en-US-AndrewNeural",  // edge-tts voice name, used for questions (and answers, if answer_voice is unset)
   "answer_voice": null,           // optional edge-tts voice name for answers only; null = same as "voice"
+  "narration_speed": 1.0,         // playback-speed multiplier for both voices, via manim_voiceover's global_speed (passed to EdgeTTSService); 1.0 = unchanged. Anything other than 1.0 needs SoX on PATH (see "Environment" above) or the render crashes
   "theme": "midnight",            // key into themes.THEMES
   "background_image": null,       // optional absolute path to an image file
   "background_video": null,       // optional absolute path to a video file; see "Background video" above - requires rendering manim with -t/--transparent and post-processing with add_background_video.py
@@ -325,10 +353,20 @@ or via `app.py`'s **"🕰️ Timeline (Testing)"** tab (see the `app.py` bullet 
 - `timeline_video/timeline_config.json` (gitignored) /
   `timeline_video/timeline_script.txt` — same `DEFAULT_CONFIG`-with-fallback
   pattern as `gui_config.json`/`interview_script.txt`. Schema: `script_text`,
-  `voice`, `theme`, `orientation`, `show_intro`, `channel_name`,
-  `episode_title`, `show_outro`, `outro_message`, `handle` — no
-  `reveal_style` (only one visual exists so far) and no `answer_voice`
-  (single narrator for the whole video).
+  `voice`, `narration_speed`, `theme`, `orientation`, `show_intro`,
+  `channel_name`, `episode_title`, `show_outro`, `outro_message`, `handle`,
+  `pexels_api_key`, `pixabay_api_key` — no `reveal_style` (only one visual
+  exists so far) and no `answer_voice` (single narrator for the whole video).
+  `narration_speed` behaves exactly as in `gui_config.json` (see interview
+  pipeline's schema above) — needs SoX on PATH for anything other than `1.0`.
+- `timeline_video/stock_fetch.py` — `fetch_stock_image(query, orientation,
+  pexels_api_key, pixabay_api_key)`, used when a scene's `SEARCH:` line (see
+  `timeline_format.py`'s docstring) is given instead of `IMAGE:`: tries
+  Pexels then Pixabay, downloads+caches the result under
+  `timeline_video/images/stock_cache/` (gitignored), returns `None` on no
+  key/no match/failure — same as a scene with no image, falls back to the
+  theme gradient. `app.py`'s Timeline tab has a "Stock photos (optional)"
+  section with password-masked fields for both keys.
 - `timeline_video/images/` — where user-supplied scene images go. This
   pipeline has no image-generation step of its own; images are generated
   externally (e.g. via Gemini's web UI) and dropped in here, referenced by

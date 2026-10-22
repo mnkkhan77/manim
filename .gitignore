@@ -14,6 +14,7 @@ thumbnails/
 sessions/
 gui_config.json
 timeline_video/timeline_config.json
+timeline_video/images/stock_cache/
 metadata.txt
 *_captioned.mp4
 *_bold.mp4

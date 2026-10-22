@@ -16,7 +16,7 @@ import style_stacked
 import style_terminal
 import style_whiteboard
 from branding import build_intro_card, build_outro_card
-from edge_tts_service import EdgeTTSService
+from edge_tts_service import EdgeTTSService, resolve_narration_speed
 from filler_words import add_fillers
 from qa_format import parse_qa_file, parse_qa_text
 from themes import get_theme
@@ -38,6 +38,7 @@ DEFAULT_CONFIG = {
     "script_text": None,
     "voice": "en-US-AndrewNeural",
     "answer_voice": None,
+    "narration_speed": 1.0,
     "theme": "midnight",
     "background_image": None,
     "background_video": None,
@@ -82,12 +83,13 @@ class InterviewSimulation(VoiceoverScene):
         gui_config = load_gui_config()
         theme = get_theme(gui_config["theme"])
 
-        self.question_voice = EdgeTTSService(voice=gui_config["voice"])
+        narration_speed = resolve_narration_speed(gui_config.get("narration_speed", 1.0))
+        self.question_voice = EdgeTTSService(voice=gui_config["voice"], global_speed=narration_speed)
         answer_voice_name = gui_config.get("answer_voice") or gui_config["voice"]
         self.answer_voice = (
             self.question_voice
             if answer_voice_name == gui_config["voice"]
-            else EdgeTTSService(voice=answer_voice_name)
+            else EdgeTTSService(voice=answer_voice_name, global_speed=narration_speed)
         )
         self.set_speech_service(self.question_voice)
 

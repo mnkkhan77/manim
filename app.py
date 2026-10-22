@@ -57,6 +57,13 @@ FFMPEG_BIN = (
     "Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe/"
     "ffmpeg-9.0.2-full_build/bin"
 )
+# manim_voiceover's narration_speed feature shells out to a binary literally
+# named sox/sox.exe -- see AGENTS.md's Environment section for why this is
+# sox_ng under the hood, not the ChrisBagwell.SoX winget package.
+SOX_BIN = (
+    "C:/Users/NIS/AppData/Local/Microsoft/WinGet/Packages/"
+    "sox_ng.sox_ng_Microsoft.Winget.Source_8wekyb3d8bbwe"
+)
 
 
 @st.cache_resource
@@ -67,7 +74,7 @@ def detect_gpu_encoder():
     the life of the Streamlit process so this only ever runs once.
     """
     env = os.environ.copy()
-    env["PATH"] = FFMPEG_BIN + os.pathsep + env.get("PATH", "")
+    env["PATH"] = FFMPEG_BIN + os.pathsep + SOX_BIN + os.pathsep + env.get("PATH", "")
     with tempfile.TemporaryDirectory() as tmp:
         probe_path = Path(tmp) / "probe.mp4"
         try:
@@ -159,6 +166,7 @@ st.set_page_config(page_title="Interview Video Generator", page_icon="🎬", lay
 WIDGET_DEFAULTS = {
     "k_voice_label": list(VOICE_OPTIONS.keys())[0],
     "k_answer_voice_label": SAME_AS_QUESTION,
+    "k_narration_speed": 1.0,
     "k_theme": "midnight" if "midnight" in theme_names else theme_names[0],
     "k_reveal_style_label": REVEAL_STYLE_LABELS.get("stacked", list(REVEAL_STYLE_LABELS.values())[0]),
     "k_orientation_label": "Landscape (16:9)",
@@ -192,6 +200,7 @@ st.session_state.setdefault("k_tl_script_text", TIMELINE_DEFAULT_SCRIPT)
 
 TL_WIDGET_DEFAULTS = {
     "k_tl_voice_label": list(VOICE_OPTIONS.keys())[0],
+    "k_tl_narration_speed": 1.0,
     "k_tl_theme": "midnight" if "midnight" in theme_names else theme_names[0],
     "k_tl_orientation_label": "Landscape (16:9)",
     "k_tl_show_intro": False,
@@ -202,6 +211,8 @@ TL_WIDGET_DEFAULTS = {
     "k_tl_burn_captions": False,
     "k_tl_caption_style_label": "Default (white)",
     "k_tl_video_label": "",
+    "k_tl_pexels_api_key": "",
+    "k_tl_pixabay_api_key": "",
 }
 for _key, _default in TL_WIDGET_DEFAULTS.items():
     st.session_state.setdefault(_key, _default)
@@ -217,6 +228,9 @@ def _restore_timeline_session(entry):
     st.session_state["k_tl_voice_label"] = VOICE_VALUE_TO_LABEL.get(
         config.get("voice"), TL_WIDGET_DEFAULTS["k_tl_voice_label"]
     )
+    st.session_state["k_tl_narration_speed"] = config.get(
+        "narration_speed", TL_WIDGET_DEFAULTS["k_tl_narration_speed"]
+    )
     st.session_state["k_tl_theme"] = config.get("theme", TL_WIDGET_DEFAULTS["k_tl_theme"])
     st.session_state["k_tl_orientation_label"] = ORIENTATION_VALUE_TO_LABEL.get(
         config.get("orientation", "landscape"), "Landscape (16:9)"
@@ -226,6 +240,8 @@ def _restore_timeline_session(entry):
     st.session_state["k_tl_show_outro"] = bool(config.get("show_outro", False))
     st.session_state["k_tl_outro_message"] = config.get("outro_message", DEFAULT_OUTRO_MESSAGE)
     st.session_state["k_tl_video_label"] = entry.get("label", "")
+    st.session_state["k_tl_pexels_api_key"] = config.get("pexels_api_key") or ""
+    st.session_state["k_tl_pixabay_api_key"] = config.get("pixabay_api_key") or ""
 
     st.session_state["k_tl_quality_label"] = render_settings.get(
         "quality_label", TL_WIDGET_DEFAULTS["k_tl_quality_label"]
@@ -263,6 +279,9 @@ def _restore_session(entry):
         SAME_AS_QUESTION
         if not answer_voice_val
         else VOICE_VALUE_TO_LABEL.get(answer_voice_val, SAME_AS_QUESTION)
+    )
+    st.session_state["k_narration_speed"] = config.get(
+        "narration_speed", WIDGET_DEFAULTS["k_narration_speed"]
     )
     st.session_state["k_theme"] = config.get("theme", WIDGET_DEFAULTS["k_theme"])
     st.session_state["k_reveal_style_label"] = REVEAL_STYLE_LABELS.get(
@@ -402,6 +421,11 @@ answer_voice = (
     None if answer_voice_label == SAME_AS_QUESTION else VOICE_OPTIONS[answer_voice_label]
 )
 st.sidebar.caption("Pick a different voice for answers to make it sound like two people.")
+
+narration_speed = st.sidebar.slider(
+    "Narration speed", min_value=0.5, max_value=2.0, step=0.05, key="k_narration_speed"
+)
+st.sidebar.caption("1.0 = normal speed. Requires SoX to be installed and on PATH.")
 
 theme = st.sidebar.selectbox("Theme", theme_names, key="k_theme")
 st.sidebar.caption("Background gradient and text colors. Ignored if a background image is uploaded.")
@@ -643,6 +667,7 @@ with tab_interview:
             "script_text": script_text if script_text.strip() else None,
             "voice": voice,
             "answer_voice": answer_voice,
+            "narration_speed": narration_speed,
             "theme": theme,
             "reveal_style": reveal_style,
             "orientation": orientation,
@@ -720,7 +745,7 @@ with tab_interview:
             cmd += ["--video-codec", "h264_qsv", "--pixel-format", "nv12"]
 
         env = os.environ.copy()
-        env["PATH"] = FFMPEG_BIN + os.pathsep + env.get("PATH", "")
+        env["PATH"] = FFMPEG_BIN + os.pathsep + SOX_BIN + os.pathsep + env.get("PATH", "")
 
         log_lines = []
         status_box = output_container.empty()
@@ -928,7 +953,7 @@ with tab_interview:
             cmd += ["--answer-voice", answer_voice]
 
         env = os.environ.copy()
-        env["PATH"] = FFMPEG_BIN + os.pathsep + env.get("PATH", "")
+        env["PATH"] = FFMPEG_BIN + os.pathsep + SOX_BIN + os.pathsep + env.get("PATH", "")
 
         status_box = output_container.empty()
         status_box.info(
@@ -1084,6 +1109,9 @@ with tab_timeline:
             "Voice", list(VOICE_OPTIONS.keys()), key="k_tl_voice_label"
         )
         tl_voice = VOICE_OPTIONS[tl_voice_label]
+        tl_narration_speed = st.slider(
+            "Narration speed", min_value=0.5, max_value=2.0, step=0.05, key="k_tl_narration_speed"
+        )
     with tl_col2:
         tl_theme = st.selectbox("Theme", theme_names, key="k_tl_theme")
     with tl_col3:
@@ -1143,6 +1171,22 @@ with tab_timeline:
     else:
         st.caption("Subtitles are still generated as a separate .srt file either way.")
 
+    st.subheader("Stock photos (optional)")
+    st.caption(
+        "Needed only for scenes using a SEARCH: line instead of IMAGE: — "
+        "fetches a free stock photo instead of a manually supplied file. "
+        "Get a free key from pexels.com/api and/or pixabay.com/api/docs."
+    )
+    tl_stock_col1, tl_stock_col2 = st.columns(2)
+    with tl_stock_col1:
+        tl_pexels_api_key = st.text_input(
+            "Pexels API key", key="k_tl_pexels_api_key", type="password"
+        )
+    with tl_stock_col2:
+        tl_pixabay_api_key = st.text_input(
+            "Pixabay API key", key="k_tl_pixabay_api_key", type="password"
+        )
+
     tl_quality_label = st.selectbox(
         "Quality", list(QUALITY_OPTIONS.keys()), key="k_tl_quality_label"
     )
@@ -1163,6 +1207,7 @@ with tab_timeline:
         return {
             "script_text": timeline_script_text if timeline_script_text.strip() else None,
             "voice": tl_voice,
+            "narration_speed": tl_narration_speed,
             "theme": tl_theme,
             "orientation": tl_orientation,
             "show_intro": bool(tl_show_intro),
@@ -1171,6 +1216,8 @@ with tab_timeline:
             "show_outro": bool(tl_show_outro),
             "outro_message": tl_outro_message,
             "handle": "",
+            "pexels_api_key": tl_pexels_api_key.strip() or None,
+            "pixabay_api_key": tl_pixabay_api_key.strip() or None,
         }
 
     def tl_derive_label(config):
@@ -1203,7 +1250,7 @@ with tab_timeline:
             str(TIMELINE_SCRIPT_PY), "TimelineVideo",
         ]
         env = os.environ.copy()
-        env["PATH"] = FFMPEG_BIN + os.pathsep + env.get("PATH", "")
+        env["PATH"] = FFMPEG_BIN + os.pathsep + SOX_BIN + os.pathsep + env.get("PATH", "")
 
         log_lines = []
         status_box = tl_output_container.empty()
